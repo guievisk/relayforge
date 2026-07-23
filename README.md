@@ -4,6 +4,9 @@ Cloud-native webhook delivery platform. Ingests events, routes them to subscribe
 
 Built to explore the same distributed-systems patterns used by Stripe, Segment, and AWS EventBridge.
 
+**Live demo:** https://relayforge.fly.dev — health check at [`/health`](https://relayforge.fly.dev/health)
+**Stack:** Node.js · TypeScript · Fastify · Prisma · PostgreSQL · Docker · Fly.io
+
 ---
 
 ## Why this exists
@@ -74,7 +77,7 @@ flowchart LR
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/YOUR_USERNAME/relayforge.git
+git clone https://github.com/guievisk/relayforge.git
 cd relayforge
 npm install
 
@@ -108,6 +111,19 @@ curl -X POST http://localhost:3000/v1/events \
   -H "Content-Type: application/json" \
   -d '{"type":"payment.approved","data":{"amount":100}}'
 ```
+
+---
+
+## Try the live demo
+
+The app is deployed at `https://relayforge.fly.dev`. Check it's alive:
+
+```bash
+curl https://relayforge.fly.dev/health
+# {"status":"ok"}
+```
+
+Ingesting events requires an API key (issued per tenant). The `/health` endpoint is public and confirms the API + database are up.
 
 ---
 
