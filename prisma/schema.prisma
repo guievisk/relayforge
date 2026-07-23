@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---- Control plane (configuracao) ----
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  apiKeys      ApiKey[]
+  destinations Destination[]
+  events       Event[]
+
+  @@map("tenants")
+}
+
+model ApiKey {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  keyHash   String   @unique @map("key_hash") // guardamos o HASH da key, nunca a key em texto
+  label     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+}
+
+model Destination {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  url       String
+  secret    String   // usado pra assinar o webhook (HMAC)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscriptions Subscription[]
+  deliveries    Delivery[]
+
+  @@map("destinations")
+}
+
+// Quais tipos de evento esse destino escuta. Ex: "payment.*", "order.created", "*"
+model Subscription {
+  id            String   @id @default(uuid())
+  destinationId String   @map("destination_id")
+  eventPattern  String   @map("event_pattern")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  destination Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+// ---- Data plane (processamento) ----
+
+model Event {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  externalEventId String   @map("external_event_id") // id que o cliente mandou (Idempotency-Key)
+  type            String
+  source          String?
+  payload         Json
+  createdAt       DateTime @default(now()) @map("created_at")
+
+tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+deliveries Delivery[]
+outbox     OutboxEvent?
+
+  // Idempotencia na ingestao: o MESMO tenant nao registra o mesmo evento 2x
+  @@unique([tenantId, externalEventId])
+  @@map("events")
+}
+
+model Delivery {
+  id            String         @id @default(uuid())
+  eventId       String         @map("event_id")
+  destinationId String         @map("destination_id")
+  status        DeliveryStatus @default(PENDING)
+  attemptCount  Int            @default(0) @map("attempt_count")
+  nextAttemptAt DateTime?      @map("next_attempt_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  completedAt   DateTime?      @map("completed_at")
+
+  event       Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  destination Destination       @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  attempts    DeliveryAttempt[]
+
+  @@index([status, nextAttemptAt])
+  @@map("deliveries")
+}
+
+model DeliveryAttempt {
+  id              String   @id @default(uuid())
+  deliveryId      String   @map("delivery_id")
+  attemptNumber   Int      @map("attempt_number")
+  httpStatus      Int?     @map("http_status")
+  durationMs      Int?     @map("duration_ms")
+  errorCode       String?  @map("error_code")
+  responseExcerpt String?  @map("response_excerpt")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@map("delivery_attempts")
+}
+
+enum DeliveryStatus {
+  PENDING
+  DELIVERED
+  RETRYING
+  DEAD_LETTER
+}
+
+// Transactional outbox: garante que Event + intencao de processamento
+// sao salvos ATOMICAMENTE. Um worker separado le, processa (cria Deliveries)
+// e marca como processed. Se o worker cair, na proxima rodada retoma.
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  eventId     String    @unique @map("event_id")
+  processedAt DateTime? @map("processed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  // Index parcial: buscar rapido pelos nao processados
+  @@index([processedAt])
+  @@map("outbox_events")
+}

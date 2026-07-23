@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: relayforge-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: relayforge
+      POSTGRES_PASSWORD: relayforge
+      POSTGRES_DB: relayforge
+    ports:
+      - "5434:5432"
+    volumes:
+      - relayforge_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relayforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: relayforge-cache
+    restart: unless-stopped
+    ports:
+      - "6381:6379"
+    volumes:
+      - relayforge_redis:/data
+
+volumes:
+  relayforge_pg:
+  relayforge_redis:
