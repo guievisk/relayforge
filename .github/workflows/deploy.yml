@@ -1,0 +1,23 @@
+name: Deploy to Fly.io
+
+# Dispara em todo push na main. Deploya na nuvem, sem depender de CLI local.
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy app
+    runs-on: ubuntu-latest
+    concurrency: deploy-group # evita dois deploys simultaneos pisando um no outro
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # release_command no fly.toml roda `npx prisma migrate deploy` (aplica migrations).
+      # Depois sobe o codigo novo e escala conforme min_machines_running.
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
