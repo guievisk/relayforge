@@ -69,7 +69,7 @@ export async function deliverOne(deliveryId: string): Promise<void> {
   if (success) {
     await prisma.delivery.update({
       where: { id: delivery.id },
-      data: { status: 'DELIVERED', attemptCount: attemptNumber, completedAt: new Date() },
+      data: { status: 'DELIVERED', attemptCount: attemptNumber, completedAt: new Date(), lockedAt: null },
     })
     return
   }
@@ -80,7 +80,7 @@ export async function deliverOne(deliveryId: string): Promise<void> {
   if (!canRetry || reachedMax) {
     await prisma.delivery.update({
       where: { id: delivery.id },
-      data: { status: 'DEAD_LETTER', attemptCount: attemptNumber },
+      data: { status: 'DEAD_LETTER', attemptCount: attemptNumber, lockedAt: null },
     })
     return
   }
@@ -91,6 +91,6 @@ export async function deliverOne(deliveryId: string): Promise<void> {
 
   await prisma.delivery.update({
     where: { id: delivery.id },
-    data: { status: 'RETRYING', attemptCount: attemptNumber, nextAttemptAt },
+    data: { status: 'RETRYING', attemptCount: attemptNumber, nextAttemptAt, lockedAt: null },
   })
 }

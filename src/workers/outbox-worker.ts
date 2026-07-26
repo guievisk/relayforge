@@ -1,6 +1,6 @@
 // Loop periodico: le OutboxEvents nao processados e chama o service.
-// Roda no mesmo processo por enquanto (MVP). Depois vai virar processo separado
-// em pod K8s quando escalar.
+// Usa SELECT FOR UPDATE SKIP LOCKED pra permitir multiplos workers em paralelo
+// sem processar o mesmo outbox 2x.
 
 import { prisma } from '../lib/prisma.js'
 import { processOutboxEvent } from '../modules/events/service.js'
@@ -14,18 +14,31 @@ async function tick(logger?: { info: (o: unknown, msg?: string) => void; error: 
   running = true
 
   try {
-    const batch = await prisma.outboxEvent.findMany({
-      where: { processedAt: null },
-      take: 10, // processa em batches pra nao travar
-      orderBy: { createdAt: 'asc' },
+    // Reserva ate 10 outbox_events prontos, pulando os travados por outros workers.
+    // Transacao curta: so pra SELECT+UPDATE. O processamento acontece fora.
+    const claimed = await prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM outbox_events
+        WHERE processed_at IS NULL
+          AND ("lockedAt" IS NULL OR "lockedAt" < NOW() - INTERVAL '60 seconds')
+        ORDER BY created_at ASC
+        LIMIT 10
+        FOR UPDATE SKIP LOCKED
+      `
+      if (rows.length === 0) return []
+      const ids = rows.map(r => r.id)
+      await tx.$executeRaw`
+        UPDATE outbox_events SET "lockedAt" = NOW() WHERE id = ANY(${ids}::text[])
+      `
+      return ids
     })
 
-    for (const outbox of batch) {
+    for (const outboxId of claimed) {
       try {
-        const count = await processOutboxEvent(outbox.id)
-        logger?.info({ outboxId: outbox.id, deliveriesCreated: count }, 'outbox processed')
+        const count = await processOutboxEvent(outboxId)
+        logger?.info({ outboxId, deliveriesCreated: count }, 'outbox processed')
       } catch (err) {
-        logger?.error({ outboxId: outbox.id, err }, 'outbox processing failed')
+        logger?.error({ outboxId, err }, 'outbox processing failed')
       }
     }
   } finally {

@@ -97,6 +97,7 @@ model Delivery {
   lockedAt DateTime?
   
   @@index([status, nextAttemptAt])
+  @@index([lockedAt])
   @@map("deliveries")
 }
 
@@ -130,10 +131,12 @@ model OutboxEvent {
   eventId     String    @unique @map("event_id")
   processedAt DateTime? @map("processed_at")
   createdAt   DateTime  @default(now()) @map("created_at")
+  lockedAt    DateTime?
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   // Index parcial: buscar rapido pelos nao processados
   @@index([processedAt])
+  @@index([lockedAt])
   @@map("outbox_events")
 }
