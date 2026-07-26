@@ -93,7 +93,9 @@ model Delivery {
   event       Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
   destination Destination       @relation(fields: [destinationId], references: [id], onDelete: Cascade)
   attempts    DeliveryAttempt[]
-
+  
+  lockedAt DateTime?
+  
   @@index([status, nextAttemptAt])
   @@map("deliveries")
 }
