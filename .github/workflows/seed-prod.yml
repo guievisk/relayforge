@@ -1,0 +1,19 @@
+name: Seed production tenant
+
+# Roda manualmente pelo botao "Run workflow" no GitHub Actions.
+# Cria tenant + api key + destination no Neon (prod).
+# ATENCAO: o seed LIMPA todos os dados existentes antes de recriar.
+on:
+  workflow_dispatch:
+
+jobs:
+  seed:
+    name: Run prisma seed on production machine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Run seed via fly ssh
+        run: flyctl ssh console -a relayforge -C "npx tsx prisma/seed.ts"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
