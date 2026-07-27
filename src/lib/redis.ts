@@ -6,9 +6,10 @@ import { env } from '../config/env.js'
 
 export const redis: Redis | null = env.REDIS_URL
   ? new Redis(env.REDIS_URL, {
+      // ioredis enfileira comandos durante (re)conexao e reenvia quando conecta.
+      // Upstash (serverless) pode derrubar conexoes ociosas; deixar o offline queue
+      // ligado evita que um comando falhe so porque a conexao estava reconectando.
       maxRetriesPerRequest: 3,
-      lazyConnect: false,
-      enableOfflineQueue: false, // se offline, comandos falham rapido em vez de enfileirar
     })
   : null
 
