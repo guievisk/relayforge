@@ -16,16 +16,15 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      # Sanity check: mostra o formato do DATABASE_URL atual na Fly sem vazar valor.
-      # Se aparecer "user=" vazio, o secret esta malformado.
-      - name: Inspect DATABASE_URL shape on Fly
-        run: |
-          flyctl ssh console -a relayforge -C 'sh -c "node -e \"const u=new URL(process.env.DATABASE_URL);console.log(JSON.stringify({user:u.username,host:u.hostname,db:u.pathname,pw_len:u.password.length}))\""' || echo "ssh check failed (app pode estar down) - seguindo"
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
       # release_command no fly.toml roda `npx prisma migrate deploy` (aplica migrations).
       # Depois sobe o codigo novo e escala conforme min_machines_running.
       - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      # min_machines_running so mantem VMs rodando; nao cria. Este step garante 2 VMs.
+      # Idempotente: se ja tem 2, nao faz nada.
+      - name: Ensure 2 machines running in gru
+        run: flyctl scale count 2 --region gru --yes -a relayforge
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
