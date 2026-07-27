@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")   // pooler — usado pela app em runtime
+  directUrl = env("DIRECT_URL")     // sem pooler — usado pelo prisma migrate
 }
 
 // ---- Control plane (configuracao) ----
