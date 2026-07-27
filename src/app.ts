@@ -1,6 +1,7 @@
 import Fastify from 'fastify'
 import sensible from '@fastify/sensible'
 import authPlugin from './plugins/auth.js'
+import rateLimitPlugin from './plugins/rateLimit.js'
 import eventsRoutes from './modules/events/routes.js'
 
 export function buildApp() {
@@ -12,6 +13,7 @@ export function buildApp() {
 
   app.register(sensible)
   app.register(authPlugin)
+  app.register(rateLimitPlugin)
 
   app.get('/health', async () => ({ status: 'ok' }))
 
