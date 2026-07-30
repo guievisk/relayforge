@@ -121,7 +121,9 @@ OK — SKIP LOCKED works. No duplicate deliveries.
 
 Every delivery went through exactly once, despite two workers racing for the same rows. See [`test-parallel-workers.mjs`](test-parallel-workers.mjs) for the harness.
 
-The same code runs in production on Fly.io across 2 machines in `gru`.
+The same code runs in production on Fly.io across 2 machines in `gru`:
+
+![Fly.io machines](docs/fly-machines.png)
 
 ---
 
