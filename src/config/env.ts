@@ -12,6 +12,8 @@ const schema = z.object({
     .url()
     .optional()
     .catch(() => undefined),
+  // Token pra proteger as rotas /admin. Se ausente, admin fica desabilitado.
+  ADMIN_TOKEN: z.string().min(16).optional(),
 })
 
 const parsed = schema.safeParse(process.env)

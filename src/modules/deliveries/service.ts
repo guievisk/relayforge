@@ -94,3 +94,55 @@ export async function deliverOne(deliveryId: string): Promise<void> {
     data: { status: 'RETRYING', attemptCount: attemptNumber, nextAttemptAt, lockedAt: null },
   })
 }
+
+// ---- Admin: inspecao e replay de dead-letters ----
+
+// Lista deliveries em DEAD_LETTER, paginada, mais recentes primeiro.
+export async function listDeadLetters(params: { limit: number; offset: number }) {
+  const [items, total] = await Promise.all([
+    prisma.delivery.findMany({
+      where: { status: 'DEAD_LETTER' },
+      orderBy: { createdAt: 'desc' },
+      take: params.limit,
+      skip: params.offset,
+      include: {
+        event: { select: { id: true, type: true, source: true } },
+        destination: { select: { id: true, url: true } },
+      },
+    }),
+    prisma.delivery.count({ where: { status: 'DEAD_LETTER' } }),
+  ])
+  return { items, total }
+}
+
+// Detalhe de uma dead-letter: evento completo + todas as tentativas (auditoria).
+export async function getDeadLetter(deliveryId: string) {
+  return prisma.delivery.findFirst({
+    where: { id: deliveryId, status: 'DEAD_LETTER' },
+    include: {
+      event: true,
+      destination: { select: { id: true, url: true } },
+      attempts: { orderBy: { attemptNumber: 'asc' } },
+    },
+  })
+}
+
+// Reprocessa uma dead-letter: volta pra PENDING e zera os contadores.
+// O delivery worker pega na proxima rodada. Retorna null se nao existir/nao for DEAD_LETTER.
+export async function replayDeadLetter(deliveryId: string) {
+  const delivery = await prisma.delivery.findFirst({
+    where: { id: deliveryId, status: 'DEAD_LETTER' },
+  })
+  if (!delivery) return null
+
+  return prisma.delivery.update({
+    where: { id: delivery.id },
+    data: {
+      status: 'PENDING',
+      attemptCount: 0,
+      nextAttemptAt: null,
+      completedAt: null,
+      lockedAt: null,
+    },
+  })
+}

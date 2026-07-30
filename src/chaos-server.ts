@@ -11,6 +11,11 @@ app.post('/fail', async () => {
     throw new Error('simulated server error')
 })
 
+// Retorna 400: falha PERMANENTE -> vai direto pra DEAD_LETTER (sem retry)
+app.post('/reject', async (request, reply) => {
+    return reply.code(400).send({ error: 'permanently rejected' })
+})
+
 app.post('/slow', async (request, reply) => {
     await new Promise((r) => setTimeout (r,1000))
     return reply.code(200).send({ok: true})

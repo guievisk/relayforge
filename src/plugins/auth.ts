@@ -15,9 +15,10 @@ declare module 'fastify' {
 const authPlugin: FastifyPluginAsync = async (app) => {
   app.decorateRequest('tenant', undefined)
 
-  // Nao roda em rotas publicas
+  // Nao roda em rotas publicas nem nas rotas /admin (essas usam adminAuth)
   app.addHook('preHandler', async (request, reply) => {
     if (request.url === '/health' || request.url === '/') return
+    if (request.url === '/admin' || request.url.startsWith('/admin/')) return
 
     const authHeader = request.headers['authorization']
     if (!authHeader?.startsWith('Bearer ')) {
