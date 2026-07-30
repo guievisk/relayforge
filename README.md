@@ -5,9 +5,10 @@ Cloud-native webhook delivery platform. Ingests events, routes them to subscribe
 Built to explore the same distributed-systems patterns used by Stripe, Segment, and AWS EventBridge.
 
 **Live demo:** https://relayforge.fly.dev — health check at [`/health`](https://relayforge.fly.dev/health)
-**Stack:** Node.js · TypeScript · Fastify · Prisma · PostgreSQL · Docker · Fly.io · GitHub Actions
+**Admin console:** https://relayforge.fly.dev/admin (token-gated)
+**Stack:** Node.js · TypeScript · Fastify · Prisma · PostgreSQL · Redis · React · Docker · Fly.io · GitHub Actions
 
-**Production:** 2 machines in `gru` (São Paulo), horizontally scaled with `SELECT FOR UPDATE SKIP LOCKED` — no double-deliveries.
+**Production:** 2 machines in `gru` (São Paulo), horizontally scaled with `SELECT FOR UPDATE SKIP LOCKED` — no double-deliveries. Per-tenant rate limiting via Upstash Redis. Operator dashboard for triaging dead-letter deliveries.
 
 ---
 
@@ -124,18 +125,41 @@ The same code runs in production on Fly.io across 2 machines in `gru`.
 
 ---
 
+## Admin console (operator dashboard)
+
+Building a delivery platform isn't finished when deliveries are sent — someone has to **operate it** when they fail. RelayForge ships with a small React dashboard for triaging dead-letter deliveries: inspect the payload, read the failure attempts, and requeue the delivery once the receiver is fixed.
+
+**Screenshot:**
+
+![Dead-letter console](docs/admin-dashboard.png)
+
+**How it works:**
+- `GET /admin` — serves a single-file React app (React + Babel via CDN, no separate build).
+- `GET /admin/dead-letters` — paginated list of `DEAD_LETTER` deliveries.
+- `GET /admin/dead-letters/:id` — full detail (event payload + every `DeliveryAttempt`).
+- `POST /admin/dead-letters/:id/replay` — resets the delivery to `PENDING`; the existing delivery worker picks it up on the next tick and retries the whole flow (no duplicated logic).
+
+**Security:**
+- Admin routes require an `X-Admin-Token` header, compared to `env.ADMIN_TOKEN` with `crypto.timingSafeEqual` — constant-time comparison to prevent timing attacks that could otherwise leak the token character-by-character.
+- Auth is a separate plugin from tenant auth (`plugins/adminAuth.ts` vs `plugins/auth.ts`) — admins are platform operators, not tenants.
+- If `ADMIN_TOKEN` is not set, the entire admin API returns `503`. Admin is opt-in.
+
+---
+
 ## Stack
 
 - **Node.js 20 + TypeScript** (strict mode)
 - **Fastify 5** — HTTP framework (faster than Express, first-class TS support)
 - **PostgreSQL 16** via **Prisma ORM** — type-safe DB access, raw SQL for `FOR UPDATE SKIP LOCKED`
-- **Redis 7** — planned for rate limiting and dedup cache
+- **Redis 7** via **ioredis** — per-tenant sliding-window rate limiting (ZSET-based)
+- **React 18** (via CDN) — admin dashboard, served as a single HTML file by Fastify
 - **Docker Compose** — local infra (Postgres + Redis)
 - **Vitest** — unit + integration tests
 - **MSW** — HTTP mocking for delivery tests
 - **Zod** — runtime validation of API inputs
 - **Fly.io** — container hosting, multi-machine deploy in `gru` region
 - **Neon** — serverless Postgres for production
+- **Upstash** — serverless Redis for production
 - **GitHub Actions** — CI/CD, push to `main` triggers a full deploy
 
 ---
@@ -277,13 +301,19 @@ src/
 │   ├── redis.ts                    Redis singleton
 │   ├── hash.ts                     API key hashing
 │   └── hmac.ts                     Webhook payload signing
-├── plugins/auth.ts                 API key auth (injects tenant into request)
+├── plugins/
+│   ├── auth.ts                     API key auth (injects tenant into request)
+│   ├── adminAuth.ts                Admin token auth (X-Admin-Token, timing-safe)
+│   └── rateLimit.ts                Per-tenant rate limit (Redis sliding window)
 ├── modules/
 │   ├── events/                     Event ingestion + routing
 │   │   ├── routes.ts               POST /v1/events
 │   │   └── service.ts              createEvent, matchesPattern, processOutboxEvent
-│   └── deliveries/
-│       └── service.ts              deliverOne (HTTP + retry logic + lockedAt release)
+│   ├── deliveries/
+│   │   └── service.ts              deliverOne + admin queries (list, replay dead-letters)
+│   └── admin/
+│       ├── routes.ts               /admin/dead-letters (list, detail, replay)
+│       └── dashboard.ts            React SPA served at /admin
 └── workers/
     ├── outbox-worker.ts            Polls OutboxEvent with FOR UPDATE SKIP LOCKED
     └── delivery-worker.ts          Polls Deliveries with FOR UPDATE SKIP LOCKED
@@ -314,6 +344,7 @@ prisma/
 - [x] CI/CD pipeline (GitHub Actions → Fly.io)
 - [x] Running on 2 machines in production
 - [x] Rate limiting per tenant (Redis, sliding window) — verified in prod: 100 allowed, rest 429
-- [ ] Admin API to list/replay dead-letter deliveries
-- [ ] Admin dashboard (React) consuming the Admin API
+- [x] Admin API to list/replay dead-letter deliveries (token-gated, timing-safe auth)
+- [x] Admin dashboard (React) consuming the Admin API
 - [ ] Metrics endpoint (Prometheus)
+- [ ] Structured logging with request tracing
